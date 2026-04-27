@@ -85,6 +85,30 @@ Logs are written to `logs/recommender.log` (auto-created). Each run records the 
 
 ---
 
+## Demo Walkthrough
+
+> **Loom video:** *(record a 2–3 min screen capture running the three queries below and paste the link here)*
+
+The screenshots below show the system running in **demo mode** (six built-in taste profiles). The Sample Interactions section that follows shows the full RAG pipeline responding to natural-language queries.
+
+**High-Energy Pop profile — top 5 recommendations:**
+![High-Energy Pop](images/Screenshot%202026-04-14%20at%2011.50.15%20PM.png)
+
+**Chill Lofi profile — top 5 recommendations:**
+![Chill Lofi](images/Screenshot%202026-04-14%20at%2011.50.24%20PM.png)
+
+**Deep Intense Rock profile — top 5 recommendations:**
+![Deep Intense Rock](images/Screenshot%202026-04-14%20at%2011.50.30%20PM.png)
+
+To reproduce these yourself, run:
+```bash
+python -m src.main "I want upbeat happy pop music for the gym"
+python -m src.main "Give me chill lofi music for studying"
+python -m src.main "Something dark and moody for a late night drive"
+```
+
+---
+
 ## Sample Interactions
 
 ### 1. Gym / Workout Query
@@ -231,7 +255,7 @@ TF-IDF is deterministic, requires no API key, runs offline, and produces the sam
 
 A language model could parse "not too loud, something I could work to but not get distracted" better than any keyword list. But it introduces API latency, cost, and non-determinism — all of which make testing hard and behavior unpredictable. The rule-based parser is testable (19 deterministic tests), free to run, and transparent: you can read the keyword tables in `retrieval.py` and immediately understand why "gym" maps to `energy: 0.9`.
 
-**Trade-off:** Negation is not handled. "not acoustic" still fires the acousticness keyword. That is a documented limitation, not an oversight.
+**Trade-off:** The parser does not handle negation, synonyms outside its keyword tables, or multi-step intent phrasing. The full list of parsing limitations is in the `Observed Behavior and Biases` section of `model_card.md`.
 
 ### Why keep the original weighted scoring formula?
 

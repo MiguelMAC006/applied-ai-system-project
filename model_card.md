@@ -20,24 +20,9 @@ It does not use neural language models, streaming APIs, or behavioral history. A
 
 ## 3. How It Works
 
-### RAG Pipeline
+The system uses a four-step RAG pipeline: TF-IDF retrieval narrows the catalog to semantically relevant candidates, a keyword parser extracts structured preferences from the natural-language query, the original weighted scoring formula (max 7.75 pts) ranks only those candidates, and the top results are returned with per-reason explanations. Full technical details — keyword mapping tables, scoring weights, and example outputs — are in the README.
 
-1. **Retrieval (TF-IDF):** Each song is converted into a text document that includes its genre, mood, title, artist, and derived descriptors (e.g., "high energy", "gym", "acoustic"). A TF-IDF vectorizer indexes these documents. At query time, cosine similarity ranks the catalog and returns the top candidates (default: 10).
-
-2. **Query Parsing (keyword mapping):** A rule-based parser maps recognized words to structured preferences:
-   - "gym", "workout" → `energy: 0.9`, `tempo_bpm: 130`
-   - "chill", "lofi", "study" → `energy: 0.3`, `tempo_bpm: 75`
-   - "happy", "upbeat" → `valence: 0.8`
-   - "sad", "dark" → `valence: 0.2`
-   - "acoustic", "folk" → `acousticness: 0.85`
-   - "electronic", "edm" → `acousticness: 0.1`
-   - Genre and mood words found in the catalog are also detected.
-
-3. **Scoring (weighted proximity):** Only the retrieved candidates are scored. The same formula from AuraPlay 1.0 applies (max 7.75 pts), covering genre/mood exact match and energy, valence, danceability, acousticness, and tempo similarity.
-
-4. **Ranking:** Candidates are sorted by score descending. Top-k are returned with per-reason explanations.
-
-**Why retrieval matters:** Songs semantically irrelevant to the query (e.g., a folk/sad song for a gym query) are excluded before scoring begins. This is a direct improvement over the v1 approach of scoring all 18 songs blindly.
+**Why retrieval matters:** Songs semantically irrelevant to the query are excluded before any numeric scoring begins, which is a direct improvement over v1's approach of scoring all 18 songs blindly regardless of what the user actually asked for.
 
 ---
 
@@ -156,3 +141,9 @@ Adding the RAG layer revealed how much the *framing* of a query changes what the
 The biggest surprise was how well a keyword-based query parser works on a constrained catalog. "chill lofi study music" reliably retrieves the three lofi songs and scores them highest, even though the parser is just checking token membership in predefined sets. Simplicity is competitive when the domain is narrow.
 
 The key limitation that RAG does not solve is the small catalog. With only one or two songs per genre, retrieval diversity is inherently limited regardless of how good the retrieval is.
+
+**Collaboration with AI:** Claude Code (Anthropic) was used as a programming assistant throughout development.
+
+The collaboration worked best when the goal was clearly scoped. Asking the assistant to implement a specific component — like the TF-IDF document builder — produced useful output quickly and surfaced a non-obvious design choice (enriching song documents with feature-derived terms) that I would not have reached as quickly on my own. Where it was less reliable was in decisions that require understanding what correctness means for the *type* of system being built. The initial tests used exact song-ID assertions, which is a natural first instinct but wrong for retrieval systems — the assistant generated those tests without flagging the fragility concern. That had to be caught and corrected manually.
+
+The pattern that emerged: AI assistance accelerates implementation and often surfaces good design ideas, but it does not substitute for the developer's judgment about what the system should guarantee versus what it should approximate.
