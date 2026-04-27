@@ -263,6 +263,12 @@ Flooding the terminal with INFO lines would obscure the formatted output, which 
 
 **What I learned:** Writing deterministic tests for a retrieval system forced me to think carefully about *what the system guarantees* versus *what it approximates*. I can guarantee catalog containment and no crashes on empty input. I cannot guarantee that a given query always returns a specific song — that depends on TF-IDF weights that shift as the corpus changes. The tests reflect that distinction: they assert properties (non-empty, in-catalog, high-energy song in top-3) rather than exact outputs.
 
+**Confidence scoring:** The 7.75-point score acts as a built-in reliability signal. High-signal queries (clear genre + mood keywords) produce scores of 5–6, indicating strong catalog alignment. Low-signal queries (no recognized genre or mood) top out near 1.7, honestly signaling a catalog gap rather than presenting a confident wrong answer. A score below roughly 2.0 is a reliable indicator that the query outran the catalog.
+
+**Human evaluation:** All three sample queries in this README were evaluated manually before publication. Two (gym/pop, chill/lofi) matched what an experienced listener would intuitively choose. The third (late-night drive) returned the defensible top pick but at a low score — confirming that low scores and honest degradation were correctly coupled.
+
+**Summary:** 19/19 automated tests pass. Confidence scores reliably distinguish strong catalog matches from poor ones. Every decision is logged. Human evaluation confirmed correct high-confidence behavior and appropriate low-confidence degradation on ambiguous queries.
+
 ---
 
 ## Reflection
@@ -272,6 +278,16 @@ Building the original Music Recommender Simulation taught me that recommender sy
 Adding the RAG layer changed how I think about AI pipelines. The retrieval step does not make the system smarter — it makes it *narrower in a useful way*. Instead of scoring all 18 songs blindly, the system first asks "which of these are even plausibly relevant?" and only then applies detailed scoring. That two-stage pattern — retrieve broadly, rank precisely — is the same architecture used in production search and conversational AI systems. Seeing it work on 18 songs made the pattern intuitive in a way that reading about it abstractly never did.
 
 The most honest limitation this project exposed is that **the catalog is the ceiling**. No amount of retrieval sophistication can recommend a jazz song if there is only one in the catalog, and no amount of query parsing can surface a mid-energy song when the catalog has none between 0.45 and 0.65 energy. The AI is only as good as the data it can draw from — and the data here reflects the tastes of whoever created the 18 songs, not the diversity of real listening behavior. That is a lesson that generalizes well beyond this project.
+
+**Could this system be misused?** The most likely misuse is treating low-score outputs as confidently correct. A user who doesn't notice that 1.7/7.75 means "the catalog has no good match" might still act on that recommendation as though it were reliable. In a production setting with a large catalog and user data, genre labels — which reflect whoever curated the dataset — could systematically underserve listeners from underrepresented musical cultures. Prevention requires two things: a plain-language warning when the top score falls below a meaningful threshold, and an audit of catalog diversity before any real deployment.
+
+**What surprised me in reliability testing:** I expected the late-night drive query to score proportionally to query clarity — but it returned the *correct* answer (Night Drive Loop is genuinely the right pick) at a near-zero score (1.71/7.75). The system was right but not confident, and that turned out to be the ideal failure mode. A system that is uncertain and says so is far less dangerous than one that is wrong and sounds sure. Seeing that distinction surface naturally in the score output changed how I think about what trustworthy AI behavior actually looks like.
+
+**Collaboration with AI:** This project was built with Claude Code as a programming assistant throughout.
+
+*Helpful suggestion:* When building the TF-IDF document builder, the assistant suggested enriching each song's text representation with feature-derived terms — appending "gym", "workout", and "fast" to high-tempo songs, and "acoustic" and "folk" to high-acousticness songs. Without that, a query like "upbeat gym pop" would only match literal genre and mood words from the CSV and miss songs with matching audio features. The enriched documents made lifestyle-keyword queries work correctly without any changes to the scoring logic.
+
+*Flawed suggestion:* An early version of the test suite included an assertion that the top result for "upbeat happy pop workout music" should always be a specific song ID. When TF-IDF weights shifted slightly during development as new content was added to the document corpus, the test failed even though the system was behaving correctly. The fix was to replace the exact-ID check with a property assertion — "the top result should have energy ≥ 0.6 OR genre == 'pop'" — which remains valid regardless of internal weight changes. The lesson is that exact-output assertions are wrong for retrieval systems; test invariants, not snapshots.
 
 ---
 
