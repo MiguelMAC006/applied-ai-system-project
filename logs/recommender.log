@@ -12,3 +12,10 @@
 2026-04-26 22:57:51,575 src.retrieval INFO Candidate pool IDs: [4, 2, 9, 6, 16, 17, 13, 7, 3, 5]
 2026-04-26 22:57:51,575 src.retrieval INFO Parsed preferences: {'energy': 0.3, 'tempo_bpm': 75.0, 'genre': 'lofi', 'mood': 'chill'}
 2026-04-26 22:57:51,576 src.retrieval INFO Final recommendation IDs: [4, 2, 6, 9, 17]
+2026-04-26 23:16:38,644 src.recommender INFO Loaded 18 songs from /Users/miguelcuevas/applied-ai-system-final/data/songs.csv
+2026-04-26 23:16:39,754 src.retrieval INFO TF-IDF retrieved 10 songs for query 'Something dark and moody for a late night drive' → IDs: [8, 17, 13, 15, 18, 7, 2, 3, 4, 5]
+2026-04-26 23:16:39,754 src.retrieval INFO recommend_from_query | query='Something dark and moody for a late night drive' | k=5 | catalog_size=18
+2026-04-26 23:16:39,755 src.retrieval INFO TF-IDF retrieved 10 songs for query 'Something dark and moody for a late night drive' → IDs: [8, 17, 13, 15, 18, 7, 2, 3, 4, 5]
+2026-04-26 23:16:39,755 src.retrieval INFO Candidate pool IDs: [8, 17, 13, 15, 18, 7, 2, 3, 4, 5]
+2026-04-26 23:16:39,755 src.retrieval INFO Parsed preferences: {'valence': 0.2, 'mood': 'moody'}
+2026-04-26 23:16:39,755 src.retrieval INFO Final recommendation IDs: [8, 17, 15, 13, 3]
