@@ -1,340 +1,172 @@
-# 🎵 Music Recommender Simulation
+# Music Recommender with RAG
 
-## Project Summary
-
-In this project you will build and explain a small music recommender system.
-
-Your goal is to:
-
-- Represent songs and a user "taste profile" as data
-- Design a scoring rule that turns that data into recommendations
-- Evaluate what your system gets right and wrong
-- Reflect on how this mirrors real world AI recommenders
-
-Replace this paragraph with your own summary of what your version does.
+A command-line music recommender that uses **Retrieval-Augmented Generation (RAG)** to turn natural-language queries into ranked song recommendations from a local catalog.
 
 ---
 
-## How The System Works
+## What It Does
 
-Explain your design in plain language.
+You type a free-text query like:
 
-Some prompts to answer:
+```
+"I want upbeat pop music for the gym"
+```
 
-- What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
+The system:
+1. **Retrieves** semantically relevant songs from `data/songs.csv` using TF-IDF cosine similarity.
+2. **Parses** your query into structured preferences (genre, mood, energy, valence, etc.) using keyword mappings.
+3. **Scores** only the retrieved candidates using a weighted feature-similarity formula.
+4. **Returns** ranked recommendations with a per-song explanation.
 
-You can include a simple diagram or bullet list if helpful.
-
----
-
-Real-world recommenders like Spotify and YouTube don't just find songs with the highest energy or most plays — they find songs that are closest to *what a specific user already loves*. They do this by building a profile of the user's taste (from listening history, skips, and likes) and then scoring every candidate song against that profile using a mix of behavioral signals and audio features. Our simulation prioritizes **content-based filtering**: we skip behavioral data entirely and score songs purely on how closely their audio attributes and categorical tags match a user's stated preferences. This makes the logic transparent and explainable — every recommendation can be traced back to a specific feature match — which is ideal for learning how the math behind these systems actually works.
-
-### Song Features
-
-Each `Song` object stores the following attributes drawn from `data/songs.csv`:
-
-- `id` — unique identifier
-- `title` — song name
-- `artist` — artist name
-- `genre` — categorical style label (e.g., lofi, pop, rock, ambient, jazz, synthwave, indie pop)
-- `mood` — categorical emotional tone (e.g., happy, chill, intense, relaxed, focused, moody)
-- `energy` — float 0–1, physical intensity of the track
-- `tempo_bpm` — beats per minute, normalized for scoring
-- `valence` — float 0–1, musical positiveness/brightness
-- `danceability` — float 0–1, rhythmic groove strength
-- `acousticness` — float 0–1, organic vs. electronic texture
-
-### UserProfile Features
-
-Each `UserProfile` object stores a preferred value for each scoreable feature:
-
-- `preferred_genre` — the genre the user most wants to hear
-- `preferred_mood` — the emotional tone the user is seeking
-- `preferred_energy` — target energy level (float 0–1)
-- `preferred_valence` — target valence (float 0–1)
-- `preferred_acousticness` — target acousticness (float 0–1)
-- `preferred_tempo_bpm` — target tempo (normalized before scoring)
-- `preferred_danceability` — target danceability (float 0–1)
-
-### Scoring & Ranking
-
-The `Recommender` computes a weighted proximity score for each song:
-
-- Categorical features (`genre`, `mood`) use exact/partial match scoring
-- Numerical features use `1 - |user_preference - song_value|` to reward closeness
-- Weights prioritize genre (0.30) and mood (0.25), with energy (0.20) as the top numerical signal
-- Songs are ranked by descending score; the top-N are returned as recommendations
-
-### Algorithm Recipe (Finalized)
-
-The recommender computes a score for each song by summing these weighted components. Maximum possible score is **7.25**.
-
-**Categorical matches (binary — full points or zero):**
-
-| Signal | Points | Rule |
-|--------|--------|------|
-| Genre match | +2.00 | `song.genre == user.favorite_genre` |
-| Mood match | +1.00 | `song.mood == user.favorite_mood` |
-
-**Numeric similarity (continuous — partial credit via `1 - \|difference\|`):**
-
-| Signal | Max Points | Formula |
-|--------|-----------|---------|
-| Energy | +1.50 | `1.5 × (1 - abs(song.energy - target_energy))` |
-| Valence | +1.00 | `1.0 × (1 - abs(song.valence - target_valence))` |
-| Danceability | +0.75 | `0.75 × (1 - abs(song.danceability - target_danceability))` |
-| Acousticness | +0.50 | `0.5 × (1 - abs(song.acousticness - target_acousticness))` |
-| Tempo | +0.50 | `0.5 × (1 - abs(song.tempo_bpm - target_tempo_bpm) / 120)` clamped to 0 |
-
-Genre carries the most weight because it is the primary filter users apply consciously. Energy is the strongest continuous signal because a large energy mismatch feels jarring even when genre and mood match. Valence and danceability provide secondary texture. Acousticness and tempo are tie-breakers.
-
-### Known Biases and Limitations
-
-- **Genre over-prioritization:** A +2.0 genre bonus is large enough that a genre match with poor mood and energy alignment can outscore a near-perfect mood/energy match in a different genre. Users who enjoy cross-genre listening may receive a narrower list than they would prefer.
-- **Exact string matching for categories:** `"indie pop" != "pop"`, so a user who likes pop will never receive a +2.0 bonus for an indie pop track even though many listeners enjoy both. The system cannot handle genre families or subgenres.
-- **Mood label sparsity:** The catalog only covers 14 distinct moods across 17 songs. Several moods appear only once (e.g., "nostalgic", "euphoric", "peaceful"). A user targeting a rare mood will rarely earn the +1.0 mood bonus.
-- **Small catalog ceiling:** With only 17 songs, top-K lists for K=5 include nearly a third of all available songs, which limits meaningful ranking.
-- **No behavioral signal:** The system treats all users with the same stated preferences as identical. It cannot learn that a user consistently skips high-tempo recommendations even when tempo matches their stated target.
+Retrieval directly narrows the scoring universe — songs that are semantically irrelevant to your query cannot appear in the final output.
 
 ---
 
-## Sample Output
+## How RAG Changes Recommendations
 
-The recommender is run against six profiles — three standard taste profiles and three adversarial edge-case profiles. Terminal output for each is shown below.
+Without RAG, every song in the catalog is scored against the user's numeric preferences. With RAG:
 
----
-
-### Standard Profiles
-
-#### High-Energy Pop
-> Genre: pop · Mood: happy · Energy: 0.92 · Valence: 0.88 · Danceability: 0.90 · Acousticness: 0.05 · Tempo: 130 BPM
-
-![High-Energy Pop — top 5 recommendations](images/Screenshot%202026-04-14%20at%2011.50.15%20PM.png)
+- TF-IDF selects a **candidate pool** (default: 10 songs) whose text representation best matches the query.
+- Only those candidates are scored, so a "gym workout" query surfaces high-energy/pop songs at retrieval time — before any numeric scoring begins.
+- This means **rare or borderline songs** that happen to score well numerically but are semantically unrelated to the query are excluded.
 
 ---
 
-#### Chill Lofi
-> Genre: lofi · Mood: chill · Energy: 0.35 · Valence: 0.58 · Danceability: 0.58 · Acousticness: 0.80 · Tempo: 76 BPM
+## Project Structure
 
-![Chill Lofi — top 5 recommendations](images/Screenshot%202026-04-14%20at%2011.50.24%20PM.png)
-
----
-
-#### Deep Intense Rock
-> Genre: rock · Mood: intense · Energy: 0.93 · Valence: 0.38 · Danceability: 0.62 · Acousticness: 0.07 · Tempo: 155 BPM
-
-![Deep Intense Rock — top 5 recommendations](images/Screenshot%202026-04-14%20at%2011.50.30%20PM.png)
-
----
-
-### Adversarial / Edge-Case Profiles
-
-#### Conflicting — High Energy + Sad Mood
-> Genre: folk · Mood: sad · Energy: **0.90** (high-energy contradicts the sad mood) · Valence: 0.10 · Acousticness: 0.85 · Tempo: 100 BPM
->
-> **What this tests:** The genre+mood categorical bonus (+3.0 pts combined) versus the energy numeric weight (+1.5 pts max). The sad-folk song wins despite its low energy, showing that categorical matches dominate the score.
-
-![Conflicting High Energy + Sad Mood — top 5 recommendations](images/Screenshot%202026-04-14%20at%2011.50.37%20PM.png)
+```
+.
+├── src/
+│   ├── main.py          — CLI entry point; RAG mode or demo mode
+│   ├── recommender.py   — scoring logic, load_songs, Song/UserProfile dataclasses
+│   └── retrieval.py     — TF-IDF retrieval, query parser, recommend_from_query (RAG)
+├── data/
+│   └── songs.csv        — 18-song catalog with audio features
+├── tests/
+│   └── test_recommender.py  — 19 tests covering retrieval, RAG pipeline, guardrails
+├── logs/                — auto-created; recommender.log written here at runtime
+├── requirements.txt
+├── model_card.md
+└── reflection.md
+```
 
 ---
 
-#### Conflicting — Metal Genre + Max Acousticness
-> Genre: metal · Mood: aggressive · Energy: 0.97 · Valence: 0.25 · Acousticness: **0.95** (contradicts typical metal production) · Tempo: 170 BPM
->
-> **What this tests:** Whether the genre bonus (+2.0) can survive a near-maximum acousticness penalty. Iron Curtain (acousticness 0.08) still wins handily, confirming the genre bonus outweighs the acousticness mismatch.
-
-![Conflicting Metal Genre + Max Acousticness — top 5 recommendations](images/Screenshot%202026-04-14%20at%2011.50.43%20PM.png)
-
----
-
-#### Edge Case — All Parameters at Maximum
-> Genre: edm · Mood: euphoric · Energy: 1.0 · Valence: 1.0 · Danceability: 1.0 · Acousticness: 0.0 · Tempo: **200 BPM** (above dataset max of 168)
->
-> **What this tests:** Saturating every axis simultaneously. The extreme tempo (200 BPM) costs the top result 0.25 pts on tempo alone. The score gap between #1 (6.76) and #2 (3.52) shows how strongly categorical bonuses dominate when a perfect genre+mood match exists.
-
-![Edge Case All Parameters at Maximum — top 5 recommendations](images/Screenshot%202026-04-14%20at%2011.50.49%20PM.png)
-
----
-
-## Getting Started
-
-### Setup
-
-1. Create a virtual environment (optional but recommended):
-
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate      # Mac or Linux
-   .venv\Scripts\activate         # Windows
-
-2. Install dependencies
+## Setup
 
 ```bash
+# 1. Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate        # macOS/Linux
+.venv\Scripts\activate           # Windows
+
+# 2. Install dependencies
 pip install -r requirements.txt
 ```
 
-3. Run the app:
+---
+
+## Running the App
+
+**RAG mode — natural-language query:**
+
+```bash
+python -m src.main "I want upbeat happy pop music for the gym"
+python -m src.main "Give me chill lofi music for studying"
+python -m src.main "Something dark and moody for a late night drive"
+```
+
+**Demo mode — runs six built-in taste profiles:**
 
 ```bash
 python -m src.main
 ```
 
-### Running Tests
+### Sample Output (RAG mode)
 
-Run the starter tests with:
+```
+========================================================
+  QUERY: I want upbeat happy pop music for the gym
+========================================================
+
+  Retrieved 10 candidate(s) from catalog:
+    • [ 5] Gym Hero (pop, intense)
+    • [ 1] Sunrise City (pop, happy)
+    • [10] Rooftop Lights (indie pop, happy)
+    • [18] Pulse Drop (edm, euphoric)
+    ...
+
+  Top 5 Recommendation(s):
+
+  #1  Sunrise City  —  Neon Echo
+       Genre: pop  |  Mood: happy
+       Score: 6.17 / 7.75  [################....]
+       Why:
+         • genre match (pop) +1.0
+         • mood match (happy) +1.0
+         • energy similarity +2.76
+         • valence similarity +0.96
+         • tempo similarity +0.45
+```
+
+---
+
+## Running Tests
 
 ```bash
 pytest
 ```
 
-You can add more tests in `tests/test_recommender.py`.
+All 19 tests should pass. The suite covers:
+- `retrieve_songs()` returns only catalog songs
+- `recommend_from_query()` returns ranked tuples
+- Empty query does not crash (retrieve or recommend)
+- Final recommendations are restricted to catalog songs
+- A workout/pop query returns a high-energy or pop song at the top
+- Explanation strings are non-empty
+- `parse_query_preferences()` maps gym → high energy, lofi → low energy, etc.
+- Numeric preferences are clamped to [0, 1]
+- Full catalog loads correctly (18 songs)
+- End-to-end RAG pipeline on real catalog
 
 ---
 
-## Experiments You Tried
+## Guardrails and Logging
 
-Use this section to document the experiments you ran. For example:
+**Guardrails:**
+- Empty query → safe fallback (returns first k songs), no crash
+- Missing or malformed CSV fields → row is skipped with a warning
+- All numeric preferences clamped to valid ranges ([0,1] or [40,220] BPM)
+- Recommendations are always a subset of `data/songs.csv` — no hallucinated songs
+- TF-IDF failure (e.g., missing scikit-learn) → fallback to first k songs
 
-- What happened when you changed the weight on genre from 2.0 to 0.5
-- What happened when you added tempo or valence to the score
-- How did your system behave for different types of users
-
----
-
-## Limitations and Risks
-
-Summarize some limitations of your recommender.
-
-Examples:
-
-- It only works on a tiny catalog
-- It does not understand lyrics or language
-- It might over favor one genre or mood
-
-You will go deeper on this in your model card.
+**Logging:**
+- Each run logs to `logs/recommender.log` (auto-created)
+- Log entries include: original query, parsed preferences, retrieved song IDs, final recommendation IDs, any warnings or fallbacks
+- Console shows only WARNING+ level messages so normal output stays clean
 
 ---
 
-## Reflection
+## Scoring Algorithm
 
-Read and complete `model_card.md`:
+Maximum possible score: **7.75 points**
 
-[**Model Card**](model_card.md)
-
-Write 1 to 2 paragraphs here about what you learned:
-
-- about how recommenders turn data into predictions
-- about where bias or unfairness could show up in systems like this
-
-
----
-
-## 7. `model_card_template.md`
-
-Combines reflection and model card framing from the Module 3 guidance. :contentReference[oaicite:2]{index=2}  
-
-```markdown
-# 🎧 Model Card - Music Recommender Simulation
-
-## 1. Model Name
-
-Give your recommender a name, for example:
-
-> VibeFinder 1.0
+| Signal | Weight | Type |
+|---|---|---|
+| Genre match | +1.00 | Binary (exact string) |
+| Mood match | +1.00 | Binary (exact string) |
+| Energy similarity | up to +3.00 | `3 × (1 - |diff|)` |
+| Valence similarity | up to +1.00 | `1 × (1 - |diff|)` |
+| Danceability similarity | up to +0.75 | `0.75 × (1 - |diff|)` |
+| Acousticness similarity | up to +0.50 | `0.5 × (1 - |diff|)` |
+| Tempo similarity | up to +0.50 | `0.5 × (1 - |diff|/120)` |
 
 ---
 
-## 2. Intended Use
+## Limitations
 
-- What is this system trying to do
-- Who is it for
-
-Example:
-
-> This model suggests 3 to 5 songs from a small catalog based on a user's preferred genre, mood, and energy level. It is for classroom exploration only, not for real users.
-
----
-
-## 3. How It Works (Short Explanation)
-
-Describe your scoring logic in plain language.
-
-- What features of each song does it consider
-- What information about the user does it use
-- How does it turn those into a number
-
-Try to avoid code in this section, treat it like an explanation to a non programmer.
-
----
-
-## 4. Data
-
-Describe your dataset.
-
-- How many songs are in `data/songs.csv`
-- Did you add or remove any songs
-- What kinds of genres or moods are represented
-- Whose taste does this data mostly reflect
-
----
-
-## 5. Strengths
-
-Where does your recommender work well
-
-You can think about:
-- Situations where the top results "felt right"
-- Particular user profiles it served well
-- Simplicity or transparency benefits
-
----
-
-## 6. Limitations and Bias
-
-Where does your recommender struggle
-
-Some prompts:
-- Does it ignore some genres or moods
-- Does it treat all users as if they have the same taste shape
-- Is it biased toward high energy or one genre by default
-- How could this be unfair if used in a real product
-
----
-
-## 7. Evaluation
-
-How did you check your system
-
-Examples:
-- You tried multiple user profiles and wrote down whether the results matched your expectations
-- You compared your simulation to what a real app like Spotify or YouTube tends to recommend
-- You wrote tests for your scoring logic
-
-You do not need a numeric metric, but if you used one, explain what it measures.
-
----
-
-## 8. Future Work
-
-If you had more time, how would you improve this recommender
-
-Examples:
-
-- Add support for multiple users and "group vibe" recommendations
-- Balance diversity of songs instead of always picking the closest match
-- Use more features, like tempo ranges or lyric themes
-
----
-
-## 9. Personal Reflection
-
-A few sentences about what you learned:
-
-- What surprised you about how your system behaved
-- How did building this change how you think about real music recommenders
-- Where do you think human judgment still matters, even if the model seems "smart"
-
+- Catalog is 18 songs — niche genres have one representative each.
+- Genre and mood matching is exact string comparison; "indie pop" ≠ "pop".
+- Query parsing is keyword-based; complex or ambiguous phrasing may not map cleanly.
+- No behavioral data — the system cannot learn from listening history.
+- Not intended for production use; built for educational exploration of RAG concepts.

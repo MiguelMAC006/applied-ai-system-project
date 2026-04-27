@@ -1,144 +1,177 @@
 """
-Command line runner for the Music Recommender Simulation.
+Music Recommender — command-line entry point.
 
-Runs the recommender for six user profiles:
-  - Three "normal" taste profiles
-  - Three adversarial / edge-case profiles designed to probe
-    whether the scoring logic produces surprising results
+Usage:
+    python -m src.main "I want upbeat pop music for the gym"
+    python -m src.main                        # runs built-in demo profiles
 """
 
-from recommender import load_songs, recommend_songs
+import logging
+import sys
+from pathlib import Path
+
+from src.recommender import load_songs, recommend_songs
+from src.retrieval import recommend_from_query
 
 # ---------------------------------------------------------------------------
-# Standard taste profiles
+# Logging setup
+# ---------------------------------------------------------------------------
+
+def setup_logging() -> None:
+    log_dir = Path(__file__).parent.parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    fh = logging.FileHandler(log_dir / "recommender.log")
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+
+    # Only warnings and above go to the console so output stays clean
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.WARNING)
+    ch.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+
+    root.addHandler(fh)
+    root.addHandler(ch)
+
+
+# ---------------------------------------------------------------------------
+# Demo profiles (used when no CLI argument is given)
 # ---------------------------------------------------------------------------
 
 HIGH_ENERGY_POP = {
-    "name":         "High-Energy Pop",
-    "genre":        "pop",
-    "mood":         "happy",
-    "energy":       0.92,   # club/gym-level intensity
-    "valence":      0.88,   # very bright and positive
-    "acousticness": 0.05,   # fully electronic / produced
-    "tempo_bpm":    130.0,  # driving dance tempo
-    "danceability": 0.90,   # made for the dance floor
+    "name": "High-Energy Pop",
+    "genre": "pop", "mood": "happy",
+    "energy": 0.92, "valence": 0.88,
+    "acousticness": 0.05, "tempo_bpm": 130.0, "danceability": 0.90,
 }
 
 CHILL_LOFI = {
-    "name":         "Chill Lofi",
-    "genre":        "lofi",
-    "mood":         "chill",
-    "energy":       0.35,   # very calm, background-music level
-    "valence":      0.58,   # quietly pleasant, not ecstatic
-    "acousticness": 0.80,   # warm, organic textures
-    "tempo_bpm":    76.0,   # slow and relaxed
-    "danceability": 0.58,   # gentle head-nod groove
+    "name": "Chill Lofi",
+    "genre": "lofi", "mood": "chill",
+    "energy": 0.35, "valence": 0.58,
+    "acousticness": 0.80, "tempo_bpm": 76.0, "danceability": 0.58,
 }
 
 DEEP_INTENSE_ROCK = {
-    "name":         "Deep Intense Rock",
-    "genre":        "rock",
-    "mood":         "intense",
-    "energy":       0.93,   # raw, aggressive power
-    "valence":      0.38,   # dark undertones
-    "acousticness": 0.07,   # fully amplified / distorted
-    "tempo_bpm":    155.0,  # fast, driving rhythm
-    "danceability": 0.62,   # headbang-capable but not club-oriented
+    "name": "Deep Intense Rock",
+    "genre": "rock", "mood": "intense",
+    "energy": 0.93, "valence": 0.38,
+    "acousticness": 0.07, "tempo_bpm": 155.0, "danceability": 0.62,
 }
 
-# ---------------------------------------------------------------------------
-# Adversarial / edge-case profiles
-# (designed to expose surprising or contradictory scoring outcomes)
-# ---------------------------------------------------------------------------
-
-# Profile A: conflicting energy vs. mood
-# energy=0.9 screams "hype" but mood="sad" screams "slow ballad".
-# The scorer weights energy (+3.0 pts) more than mood (+1.0 pt), so
-# high-energy songs should still win — is that the desired behaviour?
 CONFLICTING_ENERGY_SAD = {
-    "name":         "Conflicting — High Energy + Sad Mood",
-    "genre":        "folk",
-    "mood":         "sad",
-    "energy":       0.90,   # high-energy contradicts the sad mood
-    "valence":      0.10,   # very dark / negative
-    "acousticness": 0.85,   # acoustic folk texture
-    "tempo_bpm":    100.0,  # moderate tempo
-    "danceability": 0.30,   # not danceable
+    "name": "Conflicting — High Energy + Sad Mood",
+    "genre": "folk", "mood": "sad",
+    "energy": 0.90, "valence": 0.10,
+    "acousticness": 0.85, "tempo_bpm": 100.0, "danceability": 0.30,
 }
 
-# Profile B: genre-feature mismatch
-# Asks for metal but with maximum acousticness (0.95).
-# Metal songs in the dataset have acousticness ~0.08, so the genre
-# bonus (+1.0) will fight against the acousticness penalty. Does metal
-# still win, or do acoustic folk/classical songs outscore it?
 METAL_BUT_ACOUSTIC = {
-    "name":         "Conflicting — Metal Genre + Max Acousticness",
-    "genre":        "metal",
-    "mood":         "aggressive",
-    "energy":       0.97,   # metal-level intensity
-    "valence":      0.25,   # dark
-    "acousticness": 0.95,   # contradicts typical metal production
-    "tempo_bpm":    170.0,  # blast-beat territory
-    "danceability": 0.50,
+    "name": "Conflicting — Metal Genre + Max Acousticness",
+    "genre": "metal", "mood": "aggressive",
+    "energy": 0.97, "valence": 0.25,
+    "acousticness": 0.95, "tempo_bpm": 170.0, "danceability": 0.50,
 }
 
-# Profile C: all-extremes stress test
-# Every numeric parameter pushed to its absolute maximum.
-# No song in the dataset will match all of these perfectly; the
-# test reveals which weights dominate when every axis is saturated.
 ALL_EXTREMES = {
-    "name":         "Edge Case — All Parameters at Maximum",
-    "genre":        "edm",
-    "mood":         "euphoric",
-    "energy":       1.00,
-    "valence":      1.00,
-    "acousticness": 0.00,
-    "tempo_bpm":    200.0,  # far above any song in the dataset (max ~168)
-    "danceability": 1.00,
+    "name": "Edge Case — All Parameters at Maximum",
+    "genre": "edm", "mood": "euphoric",
+    "energy": 1.00, "valence": 1.00,
+    "acousticness": 0.00, "tempo_bpm": 200.0, "danceability": 1.00,
 }
-
-# ---------------------------------------------------------------------------
-# Runner
-# ---------------------------------------------------------------------------
 
 PROFILES = [
-    HIGH_ENERGY_POP,
-    CHILL_LOFI,
-    DEEP_INTENSE_ROCK,
-    CONFLICTING_ENERGY_SAD,
-    METAL_BUT_ACOUSTIC,
-    ALL_EXTREMES,
+    HIGH_ENERGY_POP, CHILL_LOFI, DEEP_INTENSE_ROCK,
+    CONFLICTING_ENERGY_SAD, METAL_BUT_ACOUSTIC, ALL_EXTREMES,
 ]
 
 
-def print_recommendations(user_prefs: dict, recommendations: list) -> None:
-    max_score = 7.75
-    sep = "-" * 56
+# ---------------------------------------------------------------------------
+# Output formatters
+# ---------------------------------------------------------------------------
 
+MAX_SCORE = 7.75
+SEP = "-" * 56
+
+
+def print_rag_recommendations(query: str, candidates: list, results: list) -> None:
+    print("\n" + "=" * 56)
+    print(f"  QUERY: {query}")
+    print("=" * 56)
+
+    print(f"\n  Retrieved {len(candidates)} candidate(s) from catalog:")
+    for s in candidates:
+        print(f"    • [{s['id']:2}] {s['title']} ({s['genre']}, {s['mood']})")
+
+    print(f"\n  Top {len(results)} Recommendation(s):")
+    for rank, (song, score, explanation) in enumerate(results, start=1):
+        bar_filled = round((score / MAX_SCORE) * 20) if score > 0 else 0
+        bar = "#" * bar_filled + "." * (20 - bar_filled)
+        print(f"\n  #{rank}  {song['title']}  —  {song['artist']}")
+        print(f"       Genre: {song['genre']}  |  Mood: {song['mood']}")
+        print(f"       Score: {score:.2f} / {MAX_SCORE:.2f}  [{bar}]")
+        print(f"       Why:")
+        for reason in explanation.split(" · "):
+            print(f"         • {reason}")
+        print(SEP)
+
+
+def print_recommendations(user_prefs: dict, recommendations: list) -> None:
     print("\n" + "=" * 56)
     print(f"  PROFILE: {user_prefs['name']}")
     print("=" * 56)
 
     for rank, (song, score, explanation) in enumerate(recommendations, start=1):
-        bar_filled = round((score / max_score) * 20)
+        bar_filled = round((score / MAX_SCORE) * 20)
         bar = "#" * bar_filled + "." * (20 - bar_filled)
-
         print(f"\n  #{rank}  {song['title']}  —  {song['artist']}")
         print(f"       Genre: {song['genre']}  |  Mood: {song['mood']}")
-        print(f"       Score: {score:.2f} / {max_score:.2f}  [{bar}]")
+        print(f"       Score: {score:.2f} / {MAX_SCORE:.2f}  [{bar}]")
         print(f"       Why:")
         for reason in explanation.split(" · "):
             print(f"         • {reason}")
-        print(sep)
+        print(SEP)
 
 
-def main() -> None:
-    songs = load_songs("data/songs.csv")
+# ---------------------------------------------------------------------------
+# Runner helpers
+# ---------------------------------------------------------------------------
 
+def _load_catalog() -> list:
+    csv_path = Path(__file__).parent.parent / "data" / "songs.csv"
+    return load_songs(str(csv_path))
+
+
+def run_rag_mode(query: str) -> None:
+    songs = _load_catalog()
+    from src.retrieval import retrieve_songs, parse_query_preferences
+    candidate_k = min(len(songs), max(10, 5 * 2))
+    candidates = retrieve_songs(query, songs, k=candidate_k)
+    results = recommend_from_query(query, songs, k=5)
+    print_rag_recommendations(query, candidates, results)
+
+
+def run_demo_mode() -> None:
+    songs = _load_catalog()
     for profile in PROFILES:
-        # recommend_songs doesn't use the "name" key — pass the dict as-is
         recommendations = recommend_songs(profile, songs, k=5)
         print_recommendations(profile, recommendations)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    setup_logging()
+    if len(sys.argv) > 1:
+        query = " ".join(sys.argv[1:])
+        run_rag_mode(query)
+    else:
+        run_demo_mode()
 
 
 if __name__ == "__main__":

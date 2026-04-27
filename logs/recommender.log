@@ -1,0 +1,14 @@
+2026-04-26 22:57:45,813 src.recommender INFO Loaded 18 songs from /Users/miguelcuevas/applied-ai-system-final/data/songs.csv
+2026-04-26 22:57:46,696 src.retrieval INFO TF-IDF retrieved 10 songs for query 'I want upbeat happy pop music for the gym' → IDs: [5, 1, 10, 18, 3, 15, 12, 14, 16, 7]
+2026-04-26 22:57:46,696 src.retrieval INFO recommend_from_query | query='I want upbeat happy pop music for the gym' | k=5 | catalog_size=18
+2026-04-26 22:57:46,697 src.retrieval INFO TF-IDF retrieved 10 songs for query 'I want upbeat happy pop music for the gym' → IDs: [5, 1, 10, 18, 3, 15, 12, 14, 16, 7]
+2026-04-26 22:57:46,697 src.retrieval INFO Candidate pool IDs: [5, 1, 10, 18, 3, 15, 12, 14, 16, 7]
+2026-04-26 22:57:46,697 src.retrieval INFO Parsed preferences: {'energy': 0.9, 'valence': 0.8, 'tempo_bpm': 130.0, 'genre': 'pop', 'mood': 'happy'}
+2026-04-26 22:57:46,697 src.retrieval INFO Final recommendation IDs: [1, 5, 10, 18, 3]
+2026-04-26 22:57:50,669 src.recommender INFO Loaded 18 songs from /Users/miguelcuevas/applied-ai-system-final/data/songs.csv
+2026-04-26 22:57:51,575 src.retrieval INFO TF-IDF retrieved 10 songs for query 'Give me chill lofi music for studying' → IDs: [4, 2, 9, 6, 16, 17, 13, 7, 3, 5]
+2026-04-26 22:57:51,575 src.retrieval INFO recommend_from_query | query='Give me chill lofi music for studying' | k=5 | catalog_size=18
+2026-04-26 22:57:51,575 src.retrieval INFO TF-IDF retrieved 10 songs for query 'Give me chill lofi music for studying' → IDs: [4, 2, 9, 6, 16, 17, 13, 7, 3, 5]
+2026-04-26 22:57:51,575 src.retrieval INFO Candidate pool IDs: [4, 2, 9, 6, 16, 17, 13, 7, 3, 5]
+2026-04-26 22:57:51,575 src.retrieval INFO Parsed preferences: {'energy': 0.3, 'tempo_bpm': 75.0, 'genre': 'lofi', 'mood': 'chill'}
+2026-04-26 22:57:51,576 src.retrieval INFO Final recommendation IDs: [4, 2, 6, 9, 17]

@@ -1,141 +1,158 @@
-# Model Card: VibeMatch 1.0
+# Model Card: AuraPlay 2.0 (RAG Edition)
 
 ---
 
 ## 1. Model Name
 
-**AuraPlay 1.0**
+**AuraPlay 2.0**
 
-It matches songs to a listener's vibe — their preferred genre, mood, and audio feel — and returns the five closest options from a small catalog.
+An upgrade of AuraPlay 1.0 that adds a Retrieval-Augmented Generation (RAG) layer. Instead of scoring every song against a numeric profile, the system first retrieves a semantically relevant candidate pool using TF-IDF, then scores only those candidates.
 
 ---
 
 ## 2. Goal / Task
 
-The system takes a user's music preferences and suggests five songs they would probably enjoy.
+The system takes a **natural-language query** (e.g., "upbeat pop music for the gym") and returns five ranked song recommendations from a small local catalog (`data/songs.csv`).
 
-It does not predict what songs a person will like based on history. It has no memory of past listens or skips. It only looks at what the user says they want right now and finds the closest matches in the catalog.
-
-This is called **content-based filtering**: we compare song features directly to user preferences, one song at a time.
+It does not use neural language models, streaming APIs, or behavioral history. All retrieval and scoring is local and deterministic.
 
 ---
 
-## 3. Data Used
+## 3. How It Works
 
-The catalog has **18 songs** stored in a CSV file.
+### RAG Pipeline
 
-Each song has these features:
-- **Genre** — a style label like lofi, pop, rock, or jazz
-- **Mood** — an emotional label like happy, chill, intense, or sad
-- **Energy** — a number from 0 to 1 (0 = very calm, 1 = very loud and intense)
-- **Valence** — a number from 0 to 1 (0 = dark/sad sounding, 1 = bright/positive)
-- **Danceability** — how easy it is to dance to (0 to 1)
-- **Acousticness** — how organic or electronic it sounds (0 = electronic, 1 = acoustic)
-- **Tempo** — beats per minute, like how fast the song moves
+1. **Retrieval (TF-IDF):** Each song is converted into a text document that includes its genre, mood, title, artist, and derived descriptors (e.g., "high energy", "gym", "acoustic"). A TF-IDF vectorizer indexes these documents. At query time, cosine similarity ranks the catalog and returns the top candidates (default: 10).
 
-**Limits of this dataset:**
-- 18 songs is very small. Real streaming services have millions.
-- 13 out of 15 genres have only one song each. A jazz fan's top result is always the same song.
-- No songs exist with energy between 0.45 and 0.65. Moderate-energy listeners have no close matches.
-- All songs were made up for this simulation. They do not reflect real listener diversity.
+2. **Query Parsing (keyword mapping):** A rule-based parser maps recognized words to structured preferences:
+   - "gym", "workout" → `energy: 0.9`, `tempo_bpm: 130`
+   - "chill", "lofi", "study" → `energy: 0.3`, `tempo_bpm: 75`
+   - "happy", "upbeat" → `valence: 0.8`
+   - "sad", "dark" → `valence: 0.2`
+   - "acoustic", "folk" → `acousticness: 0.85`
+   - "electronic", "edm" → `acousticness: 0.1`
+   - Genre and mood words found in the catalog are also detected.
 
----
+3. **Scoring (weighted proximity):** Only the retrieved candidates are scored. The same formula from AuraPlay 1.0 applies (max 7.75 pts), covering genre/mood exact match and energy, valence, danceability, acousticness, and tempo similarity.
 
-## 4. Algorithm Summary
+4. **Ranking:** Candidates are sorted by score descending. Top-k are returned with per-reason explanations.
 
-The system gives each song a score and returns the top five.
-
-Here is how scoring works in plain language:
-
-**Genre match:** If the song's genre matches the user's favorite genre, it gets 1 point. This is the biggest single bonus.
-
-**Mood match:** If the song's mood matches, it gets 1 more point.
-
-**Energy closeness:** The closer the song's energy is to what the user wants, the more points it earns. A perfect match is worth up to 3 points. A song far away from the target energy gets very few points here.
-
-**Valence closeness:** Same idea — closer valence earns up to 1 point.
-
-**Danceability closeness:** Up to 0.75 points for a good match.
-
-**Acousticness closeness:** Up to 0.5 points.
-
-**Tempo closeness:** Up to 0.5 points, based on how far the BPM is from the target.
-
-The maximum possible score is **7.75 points**. Songs are ranked from highest to lowest and the top five are shown.
-
-**One key thing to notice:** genre and mood are all-or-nothing. A song either matches the label exactly or gets zero for that category. There is no partial credit for being close — "indie pop" and "pop" are treated as completely different genres.
+**Why retrieval matters:** Songs semantically irrelevant to the query (e.g., a folk/sad song for a gym query) are excluded before scoring begins. This is a direct improvement over the v1 approach of scoring all 18 songs blindly.
 
 ---
 
-## 5. Observed Behavior / Biases
+## 4. Data
 
-**The mood label trap.** The system picks Sunrise City (energy 0.82, labeled "happy") over Gym Hero (energy 0.93, labeled "intense") for the High-Energy Pop profile. Gym Hero is louder, faster, and more electronic — a better fit for someone who wants to work out. But the system sees the word "happy" on Sunrise City and sends it to the top. The label beats the actual audio numbers. This is a real problem: music moods are fuzzy in real life, but the system treats them like hard rules.
+- **Catalog:** 18 songs in `data/songs.csv`
+- **Features per song:** id, title, artist, genre, mood, energy, tempo_bpm, valence, danceability, acousticness
+- **Genres:** pop, lofi, rock, ambient, synthwave, jazz, indie pop, hip-hop, r&b, classical, country, metal, reggae, folk, edm
+- **Moods:** happy, chill, intense, relaxed, focused, moody, nostalgic, romantic, melancholic, uplifting, aggressive, peaceful, sad, euphoric
 
-**The energy dead zone.** There are no songs in the catalog with energy between 0.45 and 0.65. A user who wants mid-energy background music — not sleepy, not intense — can never find a close match. Every recommendation will feel either too calm or too energetic. The system is blind to an entire range of listener taste.
-
-**The single-song filter bubble.** Thirteen of the fifteen genres in the catalog have exactly one song. If you like jazz, your #1 result is always Coffee Shop Stories. Then the next four picks come from completely unrelated genres based on which songs happen to score well numerically. A jazz fan and a metal fan end up with almost identical bottom-four lists. The system cannot offer variety within a niche genre because there are no options.
-
-**Storm Runner is everywhere.** The rock song Storm Runner (high energy, moderate valence) showed up in the top five for five out of six test profiles. It never matched anyone's genre except rock listeners, but its energy score pulled it into every energetic list. A small catalog amplifies this effect — there are not enough songs to push it out.
-
----
-
-## 6. Evaluation Process
-
-Six profiles were tested in total: three realistic listener types and three adversarial profiles designed to break the scoring logic.
-
-| Profile | Genre | Mood | Energy | What it was testing |
-|---|---|---|---|---|
-| High-Energy Pop | pop | happy | 0.92 | Does a genre+mood match produce the right pick? |
-| Chill Lofi | lofi | chill | 0.35 | Does the system work when multiple catalog entries exist? |
-| Deep Intense Rock | rock | intense | 0.93 | Does a single-song genre still produce a confident top result? |
-| Conflicting — High Energy + Sad | folk | sad | 0.90 | Does high energy override a sad mood label? |
-| Conflicting — Metal + Max Acousticness | metal | aggressive | 0.97 | Can a genre bonus survive a completely wrong feature value? |
-| All Extremes | edm | euphoric | 1.00 | What happens when every axis is maxed out? |
-
-**What worked as expected:** Chill Lofi and Deep Intense Rock both returned the right song at the top with strong scores. These profiles had internally consistent preferences and at least one close catalog match.
-
-**What was surprising:** The conflicting profiles showed that genre and mood labels dominate the score even when every other feature is a bad match. Iron Curtain (acousticness 0.08) ranked first for a user who said they wanted acousticness 0.95 — because the "metal" genre bonus was too strong to overcome.
-
-A second experiment doubled the energy weight and halved the genre weight. The top picks stayed the same for most profiles, but the conflicting profiles became more honest — the gap between the best match and the second-best got smaller, showing the tension in the user's preferences rather than hiding it.
+**Dataset limitations:**
+- 18 songs is a very small catalog. Real streaming services have millions.
+- 13 of 15 genres have exactly one song — genre-specific retrieval has no diversity.
+- No energy values exist between 0.45 and 0.65 — moderate-energy queries have no close matches.
+- All songs were synthesized for this simulation; they do not reflect real listening behavior or cultural diversity.
+- This system does **not** use real streaming data, user history, or external APIs.
 
 ---
 
-## 7. Intended Use and Non-Intended Use
+## 5. Algorithm Summary
 
-**This system is for:**
-- Learning how content-based filtering works
-- Classroom exploration of scoring logic and bias
-- Experimenting with how weights change recommendations
+**Retrieval (TF-IDF):**
+- Each song → text document with genre, mood, title, artist + feature-derived terms
+- `TfidfVectorizer` + cosine similarity selects top-k candidates
+- Falls back to first k songs if query is empty or vectorizer fails
 
-**This system is NOT for:**
-- Making real music recommendations for real users
-- Handling large catalogs (it was built and tested on 18 songs)
-- Replacing tools like Spotify or Apple Music that use behavioral data, collaborative filtering, and millions of songs
-- Making decisions about what music is "good" or what users "should" like
+**Scoring (max 7.75 pts):**
 
-The catalog was made up for this simulation. It does not represent the full range of musical taste, culture, or genre. Using it as if it did would produce unfair and inaccurate results.
-
----
-
-## 8. Ideas for Improvement
-
-**1. Add partial mood matching.**
-Right now "happy" and "intense" earn zero overlap even though they can describe the same song for different listeners. A simple fix would be to group moods into families (positive, dark, calm, energetic) and give partial credit for being in the same family.
-
-**2. Add a diversity rule.**
-Once a song appears in the top five, no other song from the same genre should be allowed to fill an adjacent slot unless the user explicitly requested that genre. This would prevent lofi from occupying three of five slots for lofi listeners and would help niche listeners see adjacent genres.
-
-**3. Grow the catalog to at least 100 songs.**
-Every single genre having one song means the system cannot distinguish between a light preference and a strong preference. With more songs per genre, the numeric scores would have more room to create meaningful separations.
+| Signal | Weight | Type |
+|---|---|---|
+| Genre match | +1.00 | Binary |
+| Mood match | +1.00 | Binary |
+| Energy | up to +3.00 | Continuous |
+| Valence | up to +1.00 | Continuous |
+| Danceability | up to +0.75 | Continuous |
+| Acousticness | up to +0.50 | Continuous |
+| Tempo | up to +0.50 | Continuous |
 
 ---
 
-## 9. Personal Reflection
+## 6. Observed Behavior and Biases
 
-**Biggest learning moment:** The mood label problem was the most surprising discovery. I expected the system to naturally favor the more energetically correct song for the High-Energy Pop profile. Instead, a single word — "happy" versus "intense" — decided the winner, even when all the audio numbers pointed the other way. It showed that a recommender is only as good as the labels in its data. If the labels are inconsistent or too simplistic, the algorithm will follow them faithfully and produce results that feel wrong to a real human.
+**Keyword parsing is literal.** A query like "not acoustic" will still trigger `acousticness: 0.85` if the word "acoustic" is present. Negation is not handled. Users who phrase preferences with negatives ("not too energetic") may get incorrect preference mappings.
 
-**On using AI tools:** AI assistance helped quickly identify the structural biases — like the energy dead zone and the single-song filter bubble — by analyzing the dataset and scoring formula together. But the results still needed to be verified manually. When the agent said the new max score was 7.75, I confirmed it by adding up each weight myself. AI tools speed up the exploration, but they do not replace the need to understand what the numbers actually mean.
+**Small catalog amplifies filter bubbles.** With 18 songs, TF-IDF retrieval frequently surfaces the same songs (e.g., Gym Hero, Sunrise City for any high-energy query). Adding more songs per genre would reduce repetition.
 
-**What surprised me about simple algorithms:** At its core, this is just addition and subtraction. There are no neural networks, no deep learning, no complex statistics — just multiply a difference by a weight and sum everything up. Yet when the genre and mood line up, the output genuinely feels like a recommendation. Sunrise City feels right for a happy pop listener. Library Rain feels right for someone who wants chill lofi. The "intelligence" is mostly pattern matching on labels we attached ourselves. That made me realize how much of what feels smart in real apps might also be simpler than it looks on the surface.
+**Genre/mood labels dominate.** The scoring formula awards +2.0 pts for genre+mood matches vs. a maximum of +5.75 for all numeric features combined. A labeled match can override superior audio-feature alignment.
 
-**What I would try next:** I would add a behavioral layer — even a fake one. For example, if the same song appears in the top three for five runs in a row, the system should automatically lower its score for subsequent runs to force variety. Real recommenders call this "diversity injection." It would make the output feel less repetitive and more like something a DJ would actually play.
+**Energy dead zone persists.** No songs have energy 0.45–0.65. Mid-energy queries still find no close matches.
+
+**No behavioral signal.** The system cannot distinguish between a first-time listener and a power user. It also cannot detect when a song has been over-recommended.
+
+---
+
+## 7. Guardrails
+
+- Empty query → safe fallback, no crash
+- Malformed CSV rows → skipped with a warning log
+- All parsed numeric preferences clamped to [0, 1] (tempo: [40, 220])
+- TF-IDF failure (import error, edge-case corpus) → falls back to first k catalog songs
+- All returned songs are guaranteed to be from `data/songs.csv` — no hallucinated results
+
+---
+
+## 8. Evaluation
+
+**Automated tests (19 total):**
+- Retrieval returns only catalog songs
+- RAG pipeline returns ranked tuples
+- Empty query does not crash retrieve or recommend
+- Final recommendations restricted to catalog
+- Workout/pop query surfaces high-energy or pop song at rank 1
+- Explanation strings are non-empty
+- Preference parsing maps gym → high energy, chill → low energy, etc.
+- Numeric preferences are clamped
+- Full CSV loads correctly (18 songs)
+- End-to-end RAG on real catalog
+
+**Manual spot-checks:**
+
+| Query | Expected top result | Actual top result |
+|---|---|---|
+| "upbeat happy pop music for the gym" | Sunrise City (pop, happy) | Sunrise City ✓ |
+| "chill lofi music for studying" | Library Rain or Midnight Coding | Library Rain ✓ |
+
+---
+
+## 9. Intended vs. Non-Intended Use
+
+**Intended:**
+- Learning how RAG combines retrieval and scoring
+- Exploring how keyword parsing affects recommendations
+- Educational exploration of content-based filtering
+
+**Not intended for:**
+- Real music recommendations for real users
+- Large catalogs (TF-IDF on 18 docs is fast; scale changes the tradeoffs)
+- Production deployment without additional guardrails, fairness review, and a much larger catalog
+- Any claim that the catalog represents diverse musical taste or cultural listening habits
+
+---
+
+## 10. Ideas for Improvement
+
+1. **Handle negation in query parsing.** "not acoustic" should set `acousticness: 0.1`, not 0.85.
+2. **Expand the catalog.** Even 100 songs would allow TF-IDF to produce meaningfully different retrievals per query.
+3. **Add genre families.** "indie pop" and "pop" should share partial credit rather than being treated as completely different labels.
+4. **Use a real embedding model.** Replacing TF-IDF with a sentence transformer would enable semantic retrieval that handles synonyms and paraphrasing.
+
+---
+
+## 11. Personal Reflection
+
+Adding the RAG layer revealed how much the *framing* of a query changes what the system considers. In v1, a "gym" profile and a "high-energy pop" profile with identical numeric features produced identical results because every song was scored the same way. With TF-IDF retrieval, a query containing the word "gym" now surfaces Gym Hero before scoring begins — the word itself is meaningful signal.
+
+The biggest surprise was how well a keyword-based query parser works on a constrained catalog. "chill lofi study music" reliably retrieves the three lofi songs and scores them highest, even though the parser is just checking token membership in predefined sets. Simplicity is competitive when the domain is narrow.
+
+The key limitation that RAG does not solve is the small catalog. With only one or two songs per genre, retrieval diversity is inherently limited regardless of how good the retrieval is.
