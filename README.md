@@ -87,18 +87,7 @@ Logs are written to `logs/recommender.log` (auto-created). Each run records the 
 
 ## Demo Walkthrough
 
-> **Loom video:** *(record a 2–3 min screen capture running the three queries below and paste the link here)*
-
-The screenshots below show the system running in **demo mode** (six built-in taste profiles). The Sample Interactions section that follows shows the full RAG pipeline responding to natural-language queries.
-
-**High-Energy Pop profile — top 5 recommendations:**
-![High-Energy Pop](images/Screenshot%202026-04-14%20at%2011.50.15%20PM.png)
-
-**Chill Lofi profile — top 5 recommendations:**
-![Chill Lofi](images/Screenshot%202026-04-14%20at%2011.50.24%20PM.png)
-
-**Deep Intense Rock profile — top 5 recommendations:**
-![Deep Intense Rock](images/Screenshot%202026-04-14%20at%2011.50.30%20PM.png)
+> **Loom video:** [Watch the demo](https://www.loom.com/share/d89b547d7bcb4ed1bbe23feb0b4bdf2e)
 
 To reproduce these yourself, run:
 ```bash
